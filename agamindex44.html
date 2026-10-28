@@ -430,7 +430,7 @@
             const statusGlobal = document.getElementById('global-status');
             const scanner = document.getElementById(`scan-${sumber}`);
             
-            let apiEndpoint = `http://localhost:3000/api/${sumber}`;
+            let apiEndpoint = `/api/${sumber}`;
             const inputTanggal = document.getElementById(`date-${sumber}`);
             if (inputTanggal && inputTanggal.value) { apiEndpoint += `?date=${inputTanggal.value}`; }
             
