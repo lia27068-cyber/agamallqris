@@ -496,7 +496,12 @@ app.get('/api/mpay', async (req, res) => {
         res.status(500).json({ status: 'error', pesan: `Gagal menarik data dari server MPAY. Detail: ${error.message}` });
     }
 });
-
+// ====================================================
+// Rute Halaman Utama (Biar tidak putih / Cannot GET)
+// ====================================================
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/agamindex44.html');
+});
 app.listen(3000, () => {
     console.log('Server Backend API jalan di http://localhost:3000');
 });
