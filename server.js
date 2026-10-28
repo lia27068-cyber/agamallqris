@@ -189,19 +189,25 @@ app.get('/api/mvp', async (req, res) => {
 
         const loginPayload = { email: null, password: "STAFFAGAM", tokoEmail: "agam69@mvpapi.com", totp: null, user2Fa: false, username: "STAFFAGAM" };
         const loginRes = await axios.post('https://qrismvp.com/api/authenticate-staff', loginPayload, { 
-    headers: { 
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    } 
-});
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Origin': 'https://qrismvp.com',
+                'Referer': 'https://qrismvp.com/'
+            } 
+        });
         const token = loginRes.data?.content?.token;
         if (!token) throw new Error("Gagal mendapatkan JWT Token otorisasi MVP.");
 
        const apiHeaders = { 
-    'Content-Type': 'application/json', 
-    'Authorization': `Bearer ${token}`,
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-};
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${token}`,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Origin': 'https://qrismvp.com',
+            'Referer': 'https://qrismvp.com/'
+        };
         const basePayload = { dateStartString: targetDateAPI, dateEndString: targetDateAPI, page: 1, size: 10000 };
 
         const fetchMvpWithRetry = async (url, payload, headers, retries = 3) => {
