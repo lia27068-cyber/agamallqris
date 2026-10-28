@@ -3,8 +3,10 @@ const axios = require('axios');
 const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 const cheerio = require('cheerio');
+const https = require('https');
 
 const app = express();
+const stealthAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -173,7 +175,6 @@ app.get('/api/autogate', async (req, res) => {
     }
 });
 
-
 // ====================================================
 // 2. Scraper API untuk QRIS MVP
 // ====================================================
@@ -187,33 +188,35 @@ app.get('/api/mvp', async (req, res) => {
         const targetDateAPI = `${dd}-${mm}-${yyyy}`;
         const tanggalTampil = `${yyyy}-${mm}-${dd}`; 
 
+        const stealthHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'Origin': 'https://qrismvp.com',
+            'Referer': 'https://qrismvp.com/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'Connection': 'keep-alive'
+        };
+
         const loginPayload = { email: null, password: "STAFFAGAM", tokoEmail: "agam69@mvpapi.com", totp: null, user2Fa: false, username: "STAFFAGAM" };
         const loginRes = await axios.post('https://qrismvp.com/api/authenticate-staff', loginPayload, { 
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Origin': 'https://qrismvp.com',
-                'Referer': 'https://qrismvp.com/'
-            } 
+            headers: stealthHeaders,
+            httpsAgent: stealthAgent
         });
+        
         const token = loginRes.data?.content?.token;
         if (!token) throw new Error("Gagal mendapatkan JWT Token otorisasi MVP.");
 
-       const apiHeaders = { 
-            'Content-Type': 'application/json', 
-            'Authorization': `Bearer ${token}`,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Origin': 'https://qrismvp.com',
-            'Referer': 'https://qrismvp.com/'
-        };
+        const apiHeaders = { ...stealthHeaders, 'Authorization': `Bearer ${token}` };
         const basePayload = { dateStartString: targetDateAPI, dateEndString: targetDateAPI, page: 1, size: 10000 };
 
         const fetchMvpWithRetry = async (url, payload, headers, retries = 3) => {
             for (let i = 0; i < retries; i++) {
                 try {
-                    const response = await axios.post(url, payload, { headers: headers, timeout: 45000 });
+                    const response = await axios.post(url, payload, { headers: headers, timeout: 45000, httpsAgent: stealthAgent });
                     if (response && response.data) return response;
                 } catch (e) {
                     if (i === retries - 1) throw e;
@@ -225,7 +228,7 @@ app.get('/api/mvp', async (req, res) => {
         const getMvpWithRetry = async (url, headers, retries = 3) => {
             for (let i = 0; i < retries; i++) {
                 try {
-                    const response = await axios.get(url, { headers: headers, timeout: 45000 });
+                    const response = await axios.get(url, { headers: headers, timeout: 45000, httpsAgent: stealthAgent });
                     if (response && response.data) return response;
                 } catch (e) {
                     if (i === retries - 1) throw e;
@@ -331,7 +334,6 @@ app.get('/api/mvp', async (req, res) => {
     }
 });
 
-
 // ====================================================
 // 3. Scraper API untuk QRIS MPAY
 // ====================================================
@@ -423,7 +425,6 @@ app.get('/api/mpay', async (req, res) => {
         if (parsedMpayBalance && parsedMpayBalance.data && parsedMpayBalance.data.data) {
             let accountData = parsedMpayBalance.data.data;
             if (accountData.length > 0) {
-                // Diambil dari key 't_ma_sb' (Payable Balance) sesuai data aktual.
                 saldoMPAY = parseFloat(accountData[0].t_ma_sb) || 0;
             }
         }
@@ -511,12 +512,14 @@ app.get('/api/mpay', async (req, res) => {
         res.status(500).json({ status: 'error', pesan: `Gagal menarik data dari server MPAY. Detail: ${error.message}` });
     }
 });
+
 // ====================================================
 // Rute Halaman Utama (Biar tidak putih / Cannot GET)
 // ====================================================
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/agamindex44.html');
 });
+
 app.listen(3000, () => {
     console.log('Server Backend API jalan di http://localhost:3000');
 });
