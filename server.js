@@ -4,7 +4,6 @@ const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 const cheerio = require('cheerio');
 const https = require('https');
-const puppeteer = require('puppeteer');
 
 const app = express();
 const stealthAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
@@ -177,10 +176,9 @@ app.get('/api/autogate', async (req, res) => {
 });
 
 // ====================================================
-// 2. Scraper API untuk QRIS MVP (PUPPETEER BYPASS)
+// 2. Scraper API untuk QRIS MVP (MURNI HEADER FIREFOX TANPA ORIGIN)
 // ====================================================
 app.get('/api/mvp', async (req, res) => {
-    let browser;
     try {
         const reqDate = req.query.date;
         let target = reqDate ? new Date(reqDate) : new Date(); 
@@ -190,61 +188,69 @@ app.get('/api/mvp', async (req, res) => {
         const targetDateAPI = `${dd}-${mm}-${yyyy}`;
         const tanggalTampil = `${yyyy}-${mm}-${dd}`; 
 
-        browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
-            headless: "new"
-        });
-        
-        const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        // KUNCI SAKTI JALUR BELAKANG
         const token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJTVEFGRkFHQU0iLCJhcGlDbGllbnQiOmZhbHNlLCJyb2xlcyI6IkZJTkFOQ0UiLCJuYW1lIjoiU1RBRkZBR0FNIiwiYWRtaW4iOmZhbHNlLCJzdGFmZiI6dHJ1ZSwiaWQiOjE2NDEsImV4cCI6MTc5Mzc4MDAxMCwiaWF0IjoxNzkzMTc1MjEwLCJlbWFpbCI6ImFnYW02OUBtdnBhcGkuY29tIn0.QV-f-NuT5laqyR5fbGziK_CkrjaIm1ZfGgHC8ZpMc8mOZRWNqlFrjHF6qJLSg1pfQNTIeG4qdmaYTLFT-XIt7g";
 
+        // Persis mengikuti GET.txt Firefox (Tanpa header Origin yang memicu 403 di Spring Boot)
         const apiHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json, text/plain, */*'
+            'Referer': 'https://qrismvp.com/staff/disburstment',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'Connection': 'keep-alive'
+        };
+
+        const postHeaders = {
+            ...apiHeaders,
+            'Content-Type': 'application/json'
         };
 
         const basePayload = { dateStartString: targetDateAPI, dateEndString: targetDateAPI, page: 1, size: 10000 };
 
-        // Eksekusi API via Puppeteer Browser Context
-        const fetchData = async (url, payload) => {
-            return await page.evaluate(async (fetchUrl, fetchHeaders, fetchPayload) => {
-                const response = await fetch(fetchUrl, {
-                    method: 'POST',
-                    headers: fetchHeaders,
-                    body: JSON.stringify(fetchPayload)
-                });
-                return await response.json();
-            }, url, apiHeaders, payload);
-        };
-        
-        const fetchGet = async (url) => {
-            return await page.evaluate(async (fetchUrl, fetchHeaders) => {
-                const response = await fetch(fetchUrl, { method: 'GET', headers: fetchHeaders });
-                return await response.json();
-            }, url, apiHeaders);
+        const fetchMvpWithRetry = async (url, payload, headers, retries = 2) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await axios.post(url, payload, { headers: headers, timeout: 30000, httpsAgent: stealthAgent });
+                    if (response && response.data) return response;
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                    await delay(1000);
+                }
+            }
         };
 
-        await page.goto('https://qrismvp.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await delay(1000);
+        const getMvpWithRetry = async (url, headers, retries = 2) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await axios.get(url, { headers: headers, timeout: 30000, httpsAgent: stealthAgent });
+                    if (response && response.data) return response;
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                    await delay(1000);
+                }
+            }
+        };
 
         let saldoMVP = 0;
-        const resBalanceMvp = await fetchGet('https://qrismvp.com/api/staff-menu/balance');
-        if (resBalanceMvp && resBalanceMvp.content) { saldoMVP = parseFloat(resBalanceMvp.content.active) || 0; }
+        const resBalanceMvp = await getMvpWithRetry('https://qrismvp.com/api/staff-menu/balance', apiHeaders);
+        if (resBalanceMvp && resBalanceMvp.data && resBalanceMvp.data.content) {
+            saldoMVP = parseFloat(resBalanceMvp.data.content.active) || 0;
+        }
 
-        const resTrans = await fetchData('https://qrismvp.com/api/staff-menu/transaction/summary', { ...basePayload, status: 1 });
-        let varDeposit = resTrans?.content?.amount || 0;
-        let varFeeDeposit = resTrans?.content?.fee || 0;
+        const resTrans = await fetchMvpWithRetry('https://qrismvp.com/api/staff-menu/transaction/summary', { ...basePayload, status: 1 }, postHeaders);
+        let varDeposit = resTrans.data?.content?.amount || 0;
+        let varFeeDeposit = resTrans.data?.content?.fee || 0;
+        await delay(300); 
 
-        const resDisb = await fetchData('https://qrismvp.com/api/staff-menu/transfer-history/paging?status_db=SUCCESS', { ...basePayload, status_db: "SUCCESS" });
-        let totalSuccessCount = resDisb?.content?.totalElements || 0;
+        const resDisb = await fetchMvpWithRetry('https://qrismvp.com/api/staff-menu/transfer-history/paging?status_db=SUCCESS', { ...basePayload, status_db: "SUCCESS" }, postHeaders);
+        let totalSuccessCount = resDisb.data?.content?.totalElements || 0;
         let countWeb173 = 0, globalValue = 0, varWeb173 = 0;
 
-        if (resDisb?.content?.content) {
-            resDisb.content.content.forEach(item => {
+        if (resDisb.data?.content?.content) {
+            resDisb.data.content.content.forEach(item => {
                 globalValue += item.amount;
                 if (item.refId && item.refId.includes('WEB-173')) { varWeb173 += item.amount; countWeb173++; }
             });
@@ -253,16 +259,18 @@ app.get('/api/mvp', async (req, res) => {
         let varDisbWD = globalValue - varWeb173;
         let varNet = globalValue;
         let varFeeDisbWD = (totalSuccessCount - countWeb173) * 1700;
+        await delay(300);
 
-        const resLain = await fetchData(`https://qrismvp.com/api/staff-menu/mutasi-saldo/paging?search=By%20Lain%20Lain`, { ...basePayload, search: "By Lain Lain" });
+        let searchLain = "By Lain Lain";
+        const resLain = await fetchMvpWithRetry(`https://qrismvp.com/api/staff-menu/mutasi-saldo/paging?search=${encodeURIComponent(searchLain)}`, { ...basePayload, search: searchLain }, postHeaders);
         let varByLain = 0;
-        if (resLain?.content?.content) { resLain.content.content.forEach(item => { varByLain += Math.abs(item.credit || 0); }); }
+        if (resLain.data?.content?.content) { resLain.data.content.content.forEach(item => { varByLain += Math.abs(item.credit || 0); }); }
+        await delay(300);
 
-        const resInject = await fetchData(`https://qrismvp.com/api/staff-menu/mutasi-saldo/paging?search=inject`, { ...basePayload, search: "inject" });
+        let searchInject = "inject";
+        const resInject = await fetchMvpWithRetry(`https://qrismvp.com/api/staff-menu/mutasi-saldo/paging?search=${encodeURIComponent(searchInject)}`, { ...basePayload, search: searchInject }, postHeaders);
         let varInject = 0;
-        if (resInject?.content?.content) { resInject.content.content.forEach(item => { varInject += Math.abs(item.debit || 0); }); }
-
-        await browser.close();
+        if (resInject.data?.content?.content) { resInject.data.content.content.forEach(item => { varInject += Math.abs(item.debit || 0); }); }
 
         const makeCounter = (val, colorClass="text-white") => `<span class="num-counter font-data text-[16px] font-bold tracking-wider ${colorClass}" data-target="${Math.round(val || 0)}">0</span>`;
 
@@ -318,9 +326,15 @@ app.get('/api/mvp', async (req, res) => {
         res.json({ status: 'sukses', data: hasilAkhirMVP });
 
     } catch (error) {
-        if (browser) await browser.close();
-        console.error("MVP Extractor Error:", error.message);
-        res.status(500).json({ status: 'error', pesan: 'Gagal menembus blokade Cloudflare MVP. ' + error.message });
+        const gagalUrl = error.config?.url || 'Unknown URL';
+        const responMvp = error.response?.data 
+            ? (typeof error.response.data === 'string' ? error.response.data.substring(0, 120) : JSON.stringify(error.response.data).substring(0, 120))
+            : 'Tanpa detail respon';
+        console.error("MVP Extractor Error:", gagalUrl, error.message, responMvp);
+        res.status(500).json({ 
+            status: 'error', 
+            pesan: `Gagal di [${gagalUrl}] (${error.message}) | Detail MVP: ${responMvp}` 
+        });
     }
 });
 
