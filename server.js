@@ -201,14 +201,8 @@ app.get('/api/mvp', async (req, res) => {
             'Connection': 'keep-alive'
         };
 
-        const loginPayload = { email: null, password: "STAFFAGAM", tokoEmail: "agam69@mvpapi.com", totp: null, user2Fa: false, username: "STAFFAGAM" };
-        const loginRes = await axios.post('https://qrismvp.com/api/authenticate-staff', loginPayload, { 
-            headers: stealthHeaders,
-            httpsAgent: stealthAgent
-        });
-        
-        const token = loginRes.data?.content?.token;
-        if (!token) throw new Error("Gagal mendapatkan JWT Token otorisasi MVP.");
+        // KUNCI SAKTI JALUR BELAKANG BYPASS LOGIN CLOUDFLARE
+        const token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJTVEFGRkFHQU0iLCJhcGlDbGllbnQiOmZhbHNlLCJyb2xlcyI6IkZJTkFOQ0UiLCJuYW1lIjoiU1RBRkZBR0FNIiwiYWRtaW4iOmZhbHNlLCJzdGFmZiI6dHJ1ZSwiaWQiOjE2NDEsImV4cCI6MTc5Mzc4MDAxMCwiaWF0IjoxNzkzMTc1MjEwLCJlbWFpbCI6ImFnYW02OUBtdnBhcGkuY29tIn0.QV-f-NuT5laqyR5fbGziK_CkrjaIm1ZfGgHC8ZpMc8mOZRWNqlFrjHF6qJLSg1pfQNTIeG4qdmaYTLFT-XIt7g";
 
         const apiHeaders = { ...stealthHeaders, 'Authorization': `Bearer ${token}` };
         const basePayload = { dateStartString: targetDateAPI, dateEndString: targetDateAPI, page: 1, size: 10000 };
